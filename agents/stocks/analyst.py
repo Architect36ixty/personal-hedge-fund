@@ -15,11 +15,25 @@ def fetch_latest_market_data():
         logger.error(f"Error fetching from DB: {e}")
         return []
 
+def get_config(key, default):
+    supabase = get_supabase_client()
+    try:
+        resp = supabase.table("system_config").select("value").eq("key", key).execute()
+        if resp.data:
+            return float(resp.data[0]['value'])
+    except:
+        pass
+    return default
+
 def analyze_and_signal(records):
     supabase = get_supabase_client()
     signals = []
 
-    logger.info(f"Analyzing {len(records)} records...")
+    # DYNAMIC CONFIG: Fetch thresholds from DB
+    rsi_buy_limit = get_config("rsi_buy_threshold", 30)
+    rsi_sell_limit = get_config("rsi_sell_threshold", 70)
+
+    logger.info(f"Analyzing {len(records)} records with RSI Buy < {rsi_buy_limit}...")
     
     for row in records:
         symbol = row.get('symbol')
@@ -27,30 +41,26 @@ def analyze_and_signal(records):
         macd = row.get('macd')
         
         if rsi is None or macd is None:
-            logger.warning(f"Incomplete data for {symbol}, skipping analysis.")
+            # logger.warning(f"Incomplete data for {symbol}") 
             continue
             
         signal_type = "HOLD"
         confidence = 0.0
         
-        # Simple Strategy
-        # Buy: RSI < 30 (Oversold) AND MACD > 0 (Momentum) ? Or MACD Crossover?
-        # Let's keep it simple as requested: "If RSI < 30 and Sentiment > Positive" (I don't have sentiment in DB yet)
-        # So I will fallback to RSI & MACD
-        
         rsi = float(rsi)
         macd = float(macd)
         
-        if rsi < 30:
+        if rsi < rsi_buy_limit:
             signal_type = "BUY"
-            confidence = (30 - rsi) / 30.0 # higher confidence if deeper oversold
-        elif rsi > 70:
+            # Confidence logic adjusted to new limit
+            confidence = (rsi_buy_limit - rsi) / rsi_buy_limit 
+        elif rsi > rsi_sell_limit:
             signal_type = "SELL"
-            confidence = (rsi - 70) / 30.0
+            confidence = (rsi - rsi_sell_limit) / 30.0
             
         # Refine with MACD
         if signal_type == "BUY" and macd < 0:
-            confidence *= 0.8 # Reduce confidence if MACD is negative (downtrend)
+            confidence *= 0.8
         
         if signal_type != "HOLD":
             logger.info(f"Generated {signal_type} signal for {symbol} (Conf: {confidence:.2f})")
@@ -58,8 +68,7 @@ def analyze_and_signal(records):
                 "symbol": symbol,
                 "signal_type": signal_type,
                 "confidence": round(confidence, 2),
-                "agent_id": "analyst_stock",
-                # "generated_at": now... (Supabase default)
+                "agent_id": "analyst_stock"
             })
 
     if signals:

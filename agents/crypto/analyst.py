@@ -17,11 +17,18 @@ def run():
         data = resp.data[0]
         weather_score = float(data['weather_score'] or 50)
         
-        # Strategy: Good Weather = Buy Signal
+        # Fetch Dynamic Config
+        try:
+            cfg_resp = supabase.table("system_config").select("value").eq("key", "weather_buy_threshold").execute()
+            buy_thresh = float(cfg_resp.data[0]['value']) if cfg_resp.data else 80
+        except:
+            buy_thresh = 80
+
+        # Strategy
         signal_type = "HOLD"
         confidence = 0.5
         
-        if weather_score > 80:
+        if weather_score > buy_thresh:
             signal_type = "BUY"
             confidence = 0.7
         elif weather_score < 30:

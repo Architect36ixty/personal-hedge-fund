@@ -81,6 +81,30 @@ def setup_database():
         timestamp timestamp with time zone default now(),
         status text -- 'EXECUTED', 'PENDING', 'FAILED'
     );
+
+    -- 6. system_config (Dynamic Parameters)
+    create table if not exists system_config (
+        key text primary key, -- e.g. 'rsi_buy_threshold', 'crypto_max_pos_size'
+        value numeric not null,
+        updated_at timestamp with time zone default now()
+    );
+
+    -- 7. system_logs (Coach Actions)
+    create table if not exists system_logs (
+        id uuid primary key default uuid_generate_v4(),
+        event_type text not null, -- 'PARAM_UPDATE', 'WEEKLY_REVIEW'
+        details text,
+        created_at timestamp with time zone default now()
+    );
+
+    -- Seed Initial Config (Idempotent upsert via do block is hard in raw SQL string, 
+    -- so we stick to simple inserts that might fail if exists or use insert on conflict do nothing)
+    insert into system_config (key, value) values 
+    ('rsi_buy_threshold', 30),
+    ('rsi_sell_threshold', 70),
+    ('crypto_max_pos_size', 500),
+    ('weather_buy_threshold', 80)
+    on conflict (key) do nothing;
     """
     
     print("\nIMPORTANT: Run the following SQL in your Supabase SQL Editor to set up the tables:\n")
