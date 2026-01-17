@@ -1,0 +1,8 @@
+pandas
+yfinance
+alpha_vantage
+finnhub-python
+supabase
+python-dotenv
+requests
+schedule
