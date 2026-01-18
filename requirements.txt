@@ -6,3 +6,5 @@ supabase
 python-dotenv
 requests
 schedule
+streamlit
+plotly
