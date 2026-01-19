@@ -3,6 +3,7 @@ import time
 import os
 from agents.common.db import get_supabase_client
 from agents.common.utils import get_logger, batch_process
+from bs4 import BeautifulSoup
 
 logger = get_logger("CryptoScout")
 
@@ -23,6 +24,29 @@ def fetch_luno_ticker(pair="XBTZAR"):
         logger.error(f"Luno API Error: {e}")
         return None
 
+def scrape_weather_data():
+    """
+    Scrape weather data from a public weather website as a fallback.
+    """
+    url = f"https://www.timeanddate.com/weather/south-africa/johannesburg"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Extract temperature
+        temp_tag = soup.find('div', class_='h2')
+        temperature = float(temp_tag.text.strip().replace('°C', '')) if temp_tag else None
+
+        # Extract weather condition
+        condition_tag = soup.find('p', class_='bk-focus__qlook')
+        condition = condition_tag.text.strip() if condition_tag else None
+
+        return {"temperature": temperature, "condition": condition}
+    except Exception as e:
+        logger.error(f"Error scraping weather data: {e}")
+        return None
+
 def fetch_weather_score():
     """
     Fetch current weather and normalize to a 'mood' score (0-100).
@@ -33,35 +57,34 @@ def fetch_weather_score():
         return 50 # Neutral default
 
     url = f"https://api.openweathermap.org/data/2.5/weather?lat={CITY_LAT}&lon={CITY_LON}&appid={api_key}&units=metric"
-    
-    def process_batch(batch):
-        for item in batch:
-            try:
-                r = requests.get(item)
-                r.raise_for_status()
-                data = r.json()
-                
-                weather_id = data['weather'][0]['id']
-                
-                score = 50
-                if weather_id == 800: # Clear
-                    score = 90
-                elif 800 < weather_id < 900: # Clouds
-                    score = 60
-                elif weather_id < 600: # Rain
-                    score = 30
-                
-                # Temp modifier
-                temp = data['main']['temp']
-                if 20 <= temp <= 25:
-                    score += 10
-                    
-                return min(max(score, 0), 100)
-            except Exception as e:
-                logger.error(f"Error processing batch item: {e}")
-                return 50
+    try:
+        r = requests.get(url)
+        r.raise_for_status()
+        data = r.json()
 
-    batch_process([url], batch_size=1, process_func=process_batch, delay=1.0)
+        weather_id = data['weather'][0]['id']
+        score = 50
+        if weather_id == 800: # Clear
+            score = 90
+        elif 800 < weather_id < 900: # Clouds
+            score = 60
+        elif weather_id < 600: # Rain
+            score = 30
+        return score
+    except Exception as e:
+        logger.warning(f"Weather API failed, falling back to scraping: {e}")
+        scraped_data = scrape_weather_data()
+        if scraped_data:
+            logger.info(f"Scraped Weather Data: {scraped_data}")
+            # Normalize scraped data to a score
+            condition = scraped_data.get("condition", "").lower()
+            if "clear" in condition:
+                return 90
+            elif "cloud" in condition:
+                return 60
+            elif "rain" in condition:
+                return 30
+        return 50
 
 def run():
     logger.info("Starting Crypto Scout...")

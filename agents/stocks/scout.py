@@ -102,33 +102,30 @@ def fetch_finnhub_sentiment(ticker: str):
 
 def fetch_stock_data(symbols):
     """
-    Fetch stock data for a list of symbols with optimized API usage and scraping fallback.
+    Fetch stock data for a list of symbols with fallback scraping.
     """
     base_url = "https://api.example.com/stock"
     urls = [f"{base_url}?symbol={symbol}" for symbol in symbols]
 
     def process_batch(batch):
-        for url in batch:
+        for symbol in batch:
             try:
+                # Attempt API request
+                url = f"{base_url}?symbol={symbol}"
                 r = requests.get(url)
                 r.raise_for_status()
                 data = r.json()
-                # Only process if RSI is within actionable range
-                rsi = data.get("RSI")
-                if rsi and 30 <= rsi <= 70:
-                    logger.info(f"[{data['symbol']}] RSI: {rsi}")
-                    # Add trading logic here
-                else:
-                    logger.info(f"[{data['symbol']}] RSI not actionable: {rsi}")
+                logger.info(f"[{symbol}] API Data: {data}")
             except Exception as e:
-                logger.error(f"Error processing batch item: {e}")
+                logger.warning(f"API failed for {symbol}, falling back to scraping: {e}")
                 # Fallback to scraping
-                symbol = url.split("=")[-1]
                 scraped_data = scrape_stock_data(symbol)
                 if scraped_data:
-                    logger.info(f"[SCRAPED] {scraped_data}")
+                    logger.info(f"[{symbol}] Scraped Data: {scraped_data}")
+                else:
+                    logger.error(f"Failed to fetch data for {symbol} via both API and scraping.")
 
-    batch_process(urls, batch_size=5, process_func=process_batch, delay=1.0)
+    batch_process(symbols, batch_size=5, process_func=process_batch, delay=1.0)
 
 def run():
     logger.info("Starting Stock Scout...")

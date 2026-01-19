@@ -38,7 +38,7 @@ def batch_process(items: List[Any], batch_size: int, process_func: Callable[[Lis
 
 def scrape_stock_data(symbol):
     """
-    Scrape stock data from a public website as a fallback when API requests are exhausted.
+    Scrape stock data from Yahoo Finance as a fallback.
     """
     url = f"https://finance.yahoo.com/quote/{symbol}"
     try:
@@ -46,15 +46,15 @@ def scrape_stock_data(symbol):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Example: Scrape the current price
+        # Extract stock price
         price_tag = soup.find('fin-streamer', {'data-field': 'regularMarketPrice'})
-        price = float(price_tag.text) if price_tag else None
+        price = float(price_tag.text.replace(',', '')) if price_tag else None
 
-        # Example: Scrape the RSI (if available on the page)
-        rsi_tag = soup.find('span', text='RSI')
-        rsi = float(rsi_tag.find_next('span').text) if rsi_tag else None
+        # Extract RSI (if available)
+        rsi_tag = soup.find('td', text='RSI (14)').find_next_sibling('td')
+        rsi = float(rsi_tag.text) if rsi_tag else None
 
-        return {"symbol": symbol, "price": price, "RSI": rsi}
+        return {"price": price, "rsi": rsi}
     except Exception as e:
         print(f"Error scraping data for {symbol}: {e}")
         return None
