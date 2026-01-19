@@ -1,6 +1,8 @@
 import time
 import logging
 from typing import Callable, Any, List
+import requests
+from bs4 import BeautifulSoup
 
 # Configure Logging
 logging.basicConfig(
@@ -33,3 +35,26 @@ def batch_process(items: List[Any], batch_size: int, process_func: Callable[[Lis
         process_func(batch)
         if i + batch_size < total:
             time.sleep(delay)
+
+def scrape_stock_data(symbol):
+    """
+    Scrape stock data from a public website as a fallback when API requests are exhausted.
+    """
+    url = f"https://finance.yahoo.com/quote/{symbol}"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Example: Scrape the current price
+        price_tag = soup.find('fin-streamer', {'data-field': 'regularMarketPrice'})
+        price = float(price_tag.text) if price_tag else None
+
+        # Example: Scrape the RSI (if available on the page)
+        rsi_tag = soup.find('span', text='RSI')
+        rsi = float(rsi_tag.find_next('span').text) if rsi_tag else None
+
+        return {"symbol": symbol, "price": price, "RSI": rsi}
+    except Exception as e:
+        print(f"Error scraping data for {symbol}: {e}")
+        return None

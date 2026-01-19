@@ -93,5 +93,23 @@ def run():
 
     logger.info("Coach finished optimization.")
 
+def insert_mock_trades():
+    """
+    Insert mock trades into the trade_logs table for testing.
+    """
+    supabase = get_supabase_client()
+    mock_trades = [
+        {"symbol": "AAPL", "trade_type": "BUY", "price": 150, "quantity": 10, "timestamp": "2026-01-18T10:00:00Z"},
+        {"symbol": "TSLA", "trade_type": "SELL", "price": 700, "quantity": 5, "timestamp": "2026-01-18T11:00:00Z"},
+    ]
+    try:
+        supabase.table("trade_logs").insert(mock_trades).execute()
+        logger.info("Inserted mock trades for testing.")
+    except Exception as e:
+        logger.error(f"Error inserting mock trades: {e}")
+
+# Call the function to insert mock trades
+insert_mock_trades()
+
 if __name__ == "__main__":
     run()

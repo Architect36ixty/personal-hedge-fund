@@ -9,11 +9,11 @@ def load_data(table, limit=100, order_col="created_at"):
     supabase = get_supabase_client()
     try:
         if order_col:
-             response = supabase.table(table).select("*").order(order_col, desc=True).limit(limit).execute()
+            response = supabase.table(table).select("*").order(order_col, desc=True).limit(limit).execute()
         else:
-             response = supabase.table(table).select("*").limit(limit).execute()
+            response = supabase.table(table).select("*").limit(limit).execute()
         return pd.DataFrame(response.data)
-    except Exception as e:
+    except supabase.exceptions.APIError as e:
         st.error(f"Error loading {table}: {e}")
         return pd.DataFrame()
 
@@ -23,7 +23,7 @@ st.title("🤖 Personal Hedge Fund: Evaluation Internal")
 st.sidebar.header("Agent Status")
 st.sidebar.success("Agents are Active (GitHub Actions)")
 if st.sidebar.button("Refresh Data"):
-    st.experimental_rerun()
+    st.rerun()
 
 # Tabs
 tab1, tab2, tab3 = st.tabs(["Overview", "The Coach (Brain)", "Market Data"])
@@ -99,7 +99,7 @@ with tab3:
         fig = px.line(crypto_df, x="date", y=["close", "weather_score"], 
                       title="Bitcoin Price (ZAR) vs Weather Score (0-100)",
                       labels={"value": "Metrics", "variable": "Indicator"})
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     else:
         st.info("No crypto market data yet.")
         

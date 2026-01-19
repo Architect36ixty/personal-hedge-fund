@@ -2,7 +2,7 @@ import requests
 import time
 import os
 from agents.common.db import get_supabase_client
-from agents.common.utils import get_logger
+from agents.common.utils import get_logger, batch_process
 
 logger = get_logger("CryptoScout")
 
@@ -33,30 +33,35 @@ def fetch_weather_score():
         return 50 # Neutral default
 
     url = f"https://api.openweathermap.org/data/2.5/weather?lat={CITY_LAT}&lon={CITY_LON}&appid={api_key}&units=metric"
-    try:
-        r = requests.get(url)
-        r.raise_for_status()
-        data = r.json()
-        
-        weather_id = data['weather'][0]['id']
-        
-        score = 50
-        if weather_id == 800: # Clear
-            score = 90
-        elif 800 < weather_id < 900: # Clouds
-            score = 60
-        elif weather_id < 600: # Rain
-            score = 30
-        
-        # Temp modifier
-        temp = data['main']['temp']
-        if 20 <= temp <= 25:
-            score += 10
-            
-        return min(max(score, 0), 100)
-    except Exception as e:
-        logger.error(f"Weather API Error: {e}")
-        return 50
+    
+    def process_batch(batch):
+        for item in batch:
+            try:
+                r = requests.get(item)
+                r.raise_for_status()
+                data = r.json()
+                
+                weather_id = data['weather'][0]['id']
+                
+                score = 50
+                if weather_id == 800: # Clear
+                    score = 90
+                elif 800 < weather_id < 900: # Clouds
+                    score = 60
+                elif weather_id < 600: # Rain
+                    score = 30
+                
+                # Temp modifier
+                temp = data['main']['temp']
+                if 20 <= temp <= 25:
+                    score += 10
+                    
+                return min(max(score, 0), 100)
+            except Exception as e:
+                logger.error(f"Error processing batch item: {e}")
+                return 50
+
+    batch_process([url], batch_size=1, process_func=process_batch, delay=1.0)
 
 def run():
     logger.info("Starting Crypto Scout...")

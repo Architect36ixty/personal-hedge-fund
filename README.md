@@ -130,3 +130,15 @@ Go to your GitHub Repository -> **Settings** -> **Secrets and variables** -> **A
 
 ## ⚠️ Disclaimer
 This is an experimental project for educational purposes. The "Weather Strategy" is a demonstration of alternative data correlation and should not be used for financial advice. **Trading crypto involves risk.**
+
+---
+
+## 📊 Rate Limiting and Batching
+
+To avoid exceeding free-tier API limits, the system uses:
+- **Batch Processing:** API calls are grouped into batches.
+- **Rate Limiting:** A delay is added between batches to comply with API rate limits.
+
+### Examples:
+- Crypto Scout batches weather API calls with a 1-second delay.
+- Stock Scout processes stock symbols in batches of 5 with a 1-second delay.
