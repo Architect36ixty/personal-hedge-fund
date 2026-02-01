@@ -6,6 +6,7 @@ import requests
 from alpha_vantage.techindicators import TechIndicators
 from agents.common.db import get_supabase_client
 from agents.common.utils import get_logger, batch_process, scrape_stock_data
+from agents.common.http import get_session, rate_limit
 
 logger = get_logger("StockScout")
 
@@ -26,6 +27,7 @@ def fetch_yfinance_data():
         logger.error(f"Error fetching yfinance data: {e}")
         return None
 
+@rate_limit(calls=5, period=60)
 def fetch_alpha_vantage_data(ticker: str):
     """
     Fetches RSI and MACD from Alpha Vantage.
@@ -49,14 +51,7 @@ def fetch_alpha_vantage_data(ticker: str):
         rsi_val = float(data_rsi[last_date]['RSI'])
         logger.info(f"[{ticker}] RSI: {rsi_val}")
         
-        # Rate limit compliance: Alpha Vantage Free Tier is 5 calls/min and 500/day (Wait, documentation says 25 requests/day used to be the case, but now it's often 25. The user said 25/day).
-        # We must be extremely careful.
-        # If we loop 10 stocks * 2 calls = 20 calls.
-        # We should wait significantly between calls if we want to be safe, or just burst if the limit is daily.
-        # User said "Batch: processes the 12 stocks sequentially with a 1-second delay".
-        # But for AV, let's sleep 12s just to be safe if the limit is per minute (5/min). 60s/5 = 12s.
-        time.sleep(12) 
-
+        # Note: decorated with rate_limit to enforce Alpha Vantage free-tier limits (in-process)
         # Fetch MACD
         data_macd, _ = ti.get_macd(symbol=ticker, interval='daily', series_type='close')
         last_date_macd = sorted(data_macd.keys())[-1]
@@ -64,7 +59,7 @@ def fetch_alpha_vantage_data(ticker: str):
         # signal_val = float(data_macd[last_date_macd]['MACD_Signal']) # optional
         logger.info(f"[{ticker}] MACD: {macd_val}")
         
-        time.sleep(12) # Safety sleep
+        # Safety: the rate_limit decorator handles spacing between calls
 
     except Exception as e:
         logger.error(f"Error fetching Alpha Vantage data for {ticker}: {e}")
@@ -81,9 +76,10 @@ def fetch_finnhub_sentiment(ticker: str):
         return 0
 
     # Rate limit: 60 calls/min. We are fine with 10 stocks.
+    session = get_session()
     try:
         url = f"https://finnhub.io/api/v1/news-sentiment?symbol={ticker}&token={api_key}"
-        r = requests.get(url)
+        r = session.get(url)
         if r.status_code == 200:
             data = r.json()
             if 'sentiment' in data and data['sentiment']:
@@ -96,8 +92,7 @@ def fetch_finnhub_sentiment(ticker: str):
             logger.error(f"Finnhub error {r.status_code}: {r.text}")
     except Exception as e:
         logger.error(f"Error fetching Finnhub sentiment for {ticker}: {e}")
-    
-    time.sleep(1)
+
     return 0
 
 def fetch_stock_data(symbols):
@@ -108,17 +103,18 @@ def fetch_stock_data(symbols):
     urls = [f"{base_url}?symbol={symbol}" for symbol in symbols]
 
     def process_batch(batch):
+        session = get_session()
         for symbol in batch:
             try:
                 # Attempt API request
                 url = f"{base_url}?symbol={symbol}"
-                r = requests.get(url)
+                r = session.get(url)
                 r.raise_for_status()
                 data = r.json()
                 logger.info(f"[{symbol}] API Data: {data}")
             except Exception as e:
                 logger.warning(f"API failed for {symbol}, falling back to scraping: {e}")
-                # Fallback to scraping
+                # Fallback to scraping (rate-limited)
                 scraped_data = scrape_stock_data(symbol)
                 if scraped_data:
                     logger.info(f"[{symbol}] Scraped Data: {scraped_data}")
@@ -184,8 +180,10 @@ def run():
 
     if records:
         try:
-            response = supabase.table("market_data_stocks").upsert(records, on_conflict="symbol,date").execute()
-            logger.info(f"Successfully stored {len(records)} records.")
+            # Use DB wrapper for safer writes
+            from agents.common import db as common_db
+
+            common_db.safe_upsert("market_data_stocks", records, on_conflict="symbol,date")
         except Exception as e:
             logger.error(f"Supabase upsert error: {e}")
     

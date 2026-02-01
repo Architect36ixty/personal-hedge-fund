@@ -1,8 +1,9 @@
 import time
 import logging
-from typing import Callable, Any, List
-import requests
+from typing import Callable, Any, List, Optional
 from bs4 import BeautifulSoup
+
+from agents.common.http import get_session, rate_limit
 
 # Configure Logging
 logging.basicConfig(
@@ -13,17 +14,8 @@ logging.basicConfig(
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
-def rate_limit(calls: int, period: int = 60):
-    """
-    Decorator to limit function calls.
-    Simple implementation: sleeps if called too frequently? 
-    Actually, for this simple project, we might just need a sleep function.
-    """
-    def decorator(func):
-        # This is a placeholder for a more complex decorator if needed.
-        # For now, we will rely on explicit batching and sleeps in the agents.
-        return func
-    return decorator
+# Use the shared rate_limit decorator from agents.common.http
+
 
 def batch_process(items: List[Any], batch_size: int, process_func: Callable[[List[Any]], None], delay: float = 1.0):
     """
@@ -36,25 +28,39 @@ def batch_process(items: List[Any], batch_size: int, process_func: Callable[[Lis
         if i + batch_size < total:
             time.sleep(delay)
 
-def scrape_stock_data(symbol):
+@rate_limit(calls=5, period=60)
+def scrape_stock_data(symbol: str, timeout: Optional[float] = 10.0):
     """
     Scrape stock data from Yahoo Finance as a fallback.
+    This uses a shared session with retries and timeouts and is rate-limited to
+    avoid overloading the target site.
     """
+    session = get_session()
     url = f"https://finance.yahoo.com/quote/{symbol}"
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
+        resp = session.get(url)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, 'html.parser')
 
-        # Extract stock price
+        price = None
         price_tag = soup.find('fin-streamer', {'data-field': 'regularMarketPrice'})
-        price = float(price_tag.text.replace(',', '')) if price_tag else None
+        if price_tag and price_tag.text:
+            try:
+                price = float(price_tag.text.replace(',', ''))
+            except Exception:
+                price = None
 
-        # Extract RSI (if available)
-        rsi_tag = soup.find('td', text='RSI (14)').find_next_sibling('td')
-        rsi = float(rsi_tag.text) if rsi_tag else None
+        rsi = None
+        try:
+            rsi_cell = soup.find('td', text='RSI (14)')
+            if rsi_cell:
+                rsi_tag = rsi_cell.find_next_sibling('td')
+                if rsi_tag and rsi_tag.text:
+                    rsi = float(rsi_tag.text)
+        except Exception:
+            rsi = None
 
         return {"price": price, "rsi": rsi}
     except Exception as e:
-        print(f"Error scraping data for {symbol}: {e}")
+        logging.getLogger("utils").warning(f"Error scraping data for {symbol}: {e}")
         return None

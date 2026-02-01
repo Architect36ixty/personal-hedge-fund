@@ -3,6 +3,7 @@ import time
 import os
 from agents.common.db import get_supabase_client
 from agents.common.utils import get_logger, batch_process
+from agents.common.http import get_session, rate_limit
 from bs4 import BeautifulSoup
 
 logger = get_logger("CryptoScout")
@@ -11,13 +12,15 @@ logger = get_logger("CryptoScout")
 CITY_LAT = "-26.2041" # Johannesburg
 CITY_LON = "28.0473"
 
+@rate_limit(calls=30, period=60)
 def fetch_luno_ticker(pair="XBTZAR"):
     """
     Fetch Ticker from Luno (Public API).
     """
     url = f"https://api.luno.com/api/1/ticker?pair={pair}"
+    session = get_session()
     try:
-        r = requests.get(url)
+        r = session.get(url)
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -30,7 +33,8 @@ def scrape_weather_data():
     """
     url = f"https://www.timeanddate.com/weather/south-africa/johannesburg"
     try:
-        response = requests.get(url)
+        session = get_session()
+        response = session.get(url)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -109,10 +113,12 @@ def run():
             "volume": float(ticker_data['rolling_24_hour_volume']),
             "weather_score": weather_score
         }
-        
-        supabase.table("market_data_crypto").upsert(record, on_conflict="symbol,date").execute()
+
+        from agents.common import db as common_db
+
+        common_db.safe_upsert("market_data_crypto", [record], on_conflict="symbol,date")
         logger.info(f"Stored Crypto Data: {record['close']} ZAR | Weather: {weather_score}")
-        
+
     except Exception as e:
         logger.error(f"Supabase upsert error: {e}")
 

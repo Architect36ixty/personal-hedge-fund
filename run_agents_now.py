@@ -9,9 +9,15 @@ load_dotenv()
 from agents.crypto.scout import run as run_crypto_scout
 from agents.stocks.scout import run as run_stock_scout
 from agents.coach import run as run_coach
+from agents.common import monitoring
 
 def main():
     print("🚀 Starting Manual Agent Execution...")
+    # Initialize monitoring (Sentry / Prometheus) if configured
+    try:
+        monitoring.init()
+    except Exception:
+        print("Warning: monitoring initialization failed; continuing")
     
     if len(sys.argv) > 1:
         agent = sys.argv[1].lower()

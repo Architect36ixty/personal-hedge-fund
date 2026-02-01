@@ -8,3 +8,8 @@ requests
 schedule
 streamlit
 plotly
+
+beautifulsoup4
+sentry-sdk
+prometheus_client
+pytest

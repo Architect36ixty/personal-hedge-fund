@@ -4,6 +4,7 @@ from requests.auth import HTTPBasicAuth
 from agents.common.db import get_supabase_client
 from agents.common.utils import get_logger
 import agents.crypto.risk as risk
+from agents.common.http import get_session
 
 logger = get_logger("CryptoTrader")
 
@@ -38,23 +39,27 @@ def run():
         if is_safe:
             if signal['signal_type'] == "BUY":
                 res = execute_luno_order("XBTZAR", "BUY", volume=amount)
-                supabase.table("trade_logs").insert({
+                # Log trade in DB via wrapper
+                from agents.common import db as common_db
+
+                common_db.safe_insert("trade_logs", [{
                     "symbol": "XBTZAR",
                     "action": "BUY",
-                    "quantity": amount, 
-                    "price": 0, 
+                    "quantity": amount,
+                    "price": 0,
                     "status": "EXECUTED_SIM"
-                }).execute()
+                }])
                 
             elif signal['signal_type'] == "SELL":
                 res = execute_luno_order("XBTZAR", "SELL")
-                supabase.table("trade_logs").insert({
+                from agents.common import db as common_db
+                common_db.safe_insert("trade_logs", [{
                     "symbol": "XBTZAR",
                     "action": "SELL",
                     "quantity": 0,
                     "price": 0,
                     "status": "EXECUTED_SIM"
-                }).execute()
+                }])
         else:
             logger.warning("Trade rejected by Risk Manager.")
             
